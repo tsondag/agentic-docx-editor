@@ -388,32 +388,40 @@ function App() {
                 <>
                   <button 
                     onClick={handleRestoreClick}
+                    title={`Restore ${storedHandle.name}`}
                     style={{
-                      padding: '10px 20px',
+                      padding: '8px 16px',
                       backgroundColor: '#28a745',
                       color: 'white',
                       border: 'none',
                       borderRadius: '4px',
                       cursor: 'pointer',
-                      fontSize: '15px',
-                      fontWeight: '600',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                      fontSize: '14px',
+                      fontWeight: '500'
                     }}
                   >
-                    📂 Open Last Document ({storedHandle.name})
+                    📂 Open Last Document
                   </button>
-                  <span style={{ fontSize: '13px', color: '#666' }}>or</span>
+                  <span style={{ 
+                    fontSize: '13px', 
+                    color: '#666',
+                    fontStyle: 'italic'
+                  }}>
+                    ({storedHandle.name})
+                  </span>
+                  <span style={{ fontSize: '13px', color: '#999', margin: '0 5px' }}>•</span>
                   <button 
                     onClick={handleOpenFile}
                     title={`Open Different File (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O)`}
                     style={{
-                      padding: '8px 16px',
-                      backgroundColor: '#6c757d',
-                      color: 'white',
-                      border: 'none',
+                      padding: '6px 12px',
+                      backgroundColor: 'transparent',
+                      color: '#0066cc',
+                      border: '1px solid #0066cc',
                       borderRadius: '4px',
                       cursor: 'pointer',
-                      fontSize: '14px'
+                      fontSize: '13px',
+                      fontWeight: '400'
                     }}
                   >
                     Open Different File
