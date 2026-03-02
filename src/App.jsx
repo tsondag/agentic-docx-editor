@@ -63,6 +63,7 @@ function App() {
       setError(null);
 
       // Export the document as a blob (without triggering download)
+      // Using SuperDoc's export() method - see https://docs.superdoc.dev/core/superdoc/methods
       const blob = await superdocRef.current.export({ triggerDownload: false });
       
       if (!blob) {
@@ -318,9 +319,10 @@ function App() {
           document={document}
           documentMode="suggesting"
           style={{ flex: 1 }}
-          onReady={(superdoc) => {
-            superdocRef.current = superdoc;
-            console.log('SuperDoc ready');
+          onReady={(event) => {
+            // onReady receives an event object with { superdoc: SuperDocInstance }
+            superdocRef.current = event.superdoc;
+            console.log('SuperDoc ready', event.superdoc);
           }}
         />
       ) : (
