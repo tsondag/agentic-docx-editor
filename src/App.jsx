@@ -138,8 +138,11 @@ function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
+      {/* Header - Sticky toolbar */}
       <div style={{ 
+        position: 'sticky',
+        top: 0,
+        zIndex: 1000,
         padding: '15px 20px', 
         borderBottom: '1px solid #ccc', 
         backgroundColor: '#f5f5f5',
@@ -147,7 +150,8 @@ function App() {
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '10px'
+        gap: '10px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
           <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
@@ -234,6 +238,9 @@ function App() {
       {/* Error message */}
       {error && (
         <div style={{ 
+          position: 'sticky',
+          top: '68px',
+          zIndex: 999,
           padding: '10px 20px', 
           backgroundColor: '#f8d7da', 
           color: '#721c24',
@@ -246,6 +253,9 @@ function App() {
       {/* Info bar */}
       {document && (
         <div style={{ 
+          position: 'sticky',
+          top: error ? '114px' : '68px',
+          zIndex: 999,
           padding: '8px 20px', 
           backgroundColor: '#d1ecf1', 
           color: '#0c5460',
