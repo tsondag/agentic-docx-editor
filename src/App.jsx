@@ -68,6 +68,7 @@ function App() {
   const superdocRef = useRef(null);
   const fileCheckInterval = useRef(null);
   const autoSaveTimeout = useRef(null); // For debounced auto-save
+  const lastSaveTime = useRef(null); // Track when we last saved to avoid reload loop
 
   // Check browser support
   const isFileSystemAccessSupported = 'showOpenFilePicker' in window;
@@ -112,6 +113,14 @@ function App() {
           setDocument(file);
           startFileWatcher(handle);
           console.log('✅ Successfully restored file:', handle.name);
+          
+          // Check if we have persistent permissions
+          try {
+            const permState = await navigator.permissions.query({ name: 'file-system' });
+            console.log('File system permission state:', permState.state);
+          } catch (e) {
+            console.log('Could not query permission state:', e);
+          }
         } else {
           // Permission not granted, clear the stored handle
           console.log('❌ Permission not granted, clearing stored handle');
@@ -193,6 +202,9 @@ function App() {
       await writable.write(blob);
       await writable.close();
 
+      // Track save time to prevent file watcher from reloading
+      lastSaveTime.current = Date.now();
+
       setLastSaved(new Date());
       console.log('File saved successfully:', fileName);
 
@@ -222,9 +234,19 @@ function App() {
           return;
         }
 
-        // If file was modified externally, reload it
+        // If file was modified externally, check if it wasn't us who saved it
         if (file.lastModified > lastModified) {
-          console.log('File modified externally, reloading...');
+          const timeSinceOurSave = lastSaveTime.current ? Date.now() - lastSaveTime.current : Infinity;
+          
+          // If we saved within the last 3 seconds, ignore this change (it was our save)
+          if (timeSinceOurSave < 3000) {
+            console.log('File change detected but it was our own save, ignoring reload');
+            lastModified = file.lastModified;
+            return;
+          }
+          
+          // Otherwise, it's an external change (from MCP or another editor)
+          console.log('File modified externally (not by our save), reloading...');
           lastModified = file.lastModified;
           setDocument(file);
         }
