@@ -67,6 +67,7 @@ function App() {
   const [isRestoring, setIsRestoring] = useState(true); // Track if we're restoring from IndexedDB
   const superdocRef = useRef(null);
   const fileCheckInterval = useRef(null);
+  const autoSaveTimeout = useRef(null); // For debounced auto-save
 
   // Check browser support
   const isFileSystemAccessSupported = 'showOpenFilePicker' in window;
@@ -275,17 +276,30 @@ function App() {
     };
   }, [fileHandle, superdocRef.current]);
 
-  // Auto-save functionality
-  useEffect(() => {
+  // Auto-save functionality - debounced (save 2 seconds after last change)
+  const triggerAutoSave = () => {
     if (!autoSaveEnabled || !fileHandle || !superdocRef.current) return;
 
-    // Save every 30 seconds if there are changes
-    const autoSaveInterval = setInterval(() => {
-      saveFile();
-    }, 30000);
+    // Clear existing timeout
+    if (autoSaveTimeout.current) {
+      clearTimeout(autoSaveTimeout.current);
+    }
 
-    return () => clearInterval(autoSaveInterval);
-  }, [autoSaveEnabled, fileHandle]);
+    // Set new timeout to save 2 seconds after last change
+    autoSaveTimeout.current = setTimeout(() => {
+      console.log('Auto-saving after content change...');
+      saveFile();
+    }, 2000); // 2 seconds debounce
+  };
+
+  // Cleanup auto-save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeout.current) {
+        clearTimeout(autoSaveTimeout.current);
+      }
+    };
+  }, []);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -442,6 +456,11 @@ function App() {
             // onReady receives an event object with { superdoc: SuperDocInstance }
             superdocRef.current = event.superdoc;
             console.log('SuperDoc ready', event.superdoc);
+          }}
+          onEditorUpdate={(event) => {
+            // Triggered when document content changes
+            // Trigger debounced auto-save (2 seconds after last change)
+            triggerAutoSave();
           }}
         />
       ) : (
