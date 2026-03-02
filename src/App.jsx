@@ -124,6 +124,39 @@ function App() {
     };
   }, []);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Check if Cmd (Mac) or Ctrl (Windows/Linux) is pressed
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+
+      // Cmd/Ctrl+S: Save
+      if (isCmdOrCtrl && e.key === 's') {
+        e.preventDefault();
+        if (fileHandle && superdocRef.current) {
+          saveFile();
+        }
+        return;
+      }
+
+      // Cmd/Ctrl+O: Open file
+      if (isCmdOrCtrl && e.key === 'o') {
+        e.preventDefault();
+        handleOpenFile();
+        return;
+      }
+
+      // Note: Undo (Cmd/Ctrl+Z) and Redo (Cmd/Ctrl+Y or Cmd/Ctrl+Shift+Z) 
+      // are handled natively by SuperDoc editor, so we don't need to override them
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [fileHandle, superdocRef.current]);
+
   // Auto-save functionality
   useEffect(() => {
     if (!autoSaveEnabled || !fileHandle || !superdocRef.current) return;
@@ -169,6 +202,7 @@ function App() {
           {!document ? (
             <button 
               onClick={handleOpenFile}
+              title={`Open DOCX File (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O)`}
               style={{
                 padding: '8px 16px',
                 backgroundColor: '#0066cc',
@@ -187,6 +221,7 @@ function App() {
               <button 
                 onClick={saveFile}
                 disabled={isSaving}
+                title={`Save (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+S)`}
                 style={{
                   padding: '8px 16px',
                   backgroundColor: isSaving ? '#ccc' : '#28a745',
@@ -218,6 +253,7 @@ function App() {
 
               <button 
                 onClick={handleOpenFile}
+                title={`Open Another File (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O)`}
                 style={{
                   padding: '8px 12px',
                   backgroundColor: '#6c757d',
@@ -260,9 +296,19 @@ function App() {
           backgroundColor: '#d1ecf1', 
           color: '#0c5460',
           fontSize: '13px',
-          borderBottom: '1px solid #bee5eb'
+          borderBottom: '1px solid #bee5eb',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px'
         }}>
-          ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
+          <span>
+            ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
+          </span>
+          <span style={{ fontSize: '12px', color: '#0c5460', opacity: 0.8 }}>
+            ⌨️ Shortcuts: {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Z (Undo) • {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Y (Redo) • {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+S (Save) • {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O (Open)
+          </span>
         </div>
       )}
 
