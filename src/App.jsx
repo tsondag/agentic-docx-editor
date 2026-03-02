@@ -75,19 +75,33 @@ function App() {
   useEffect(() => {
     const restoreFile = async () => {
       if (!isFileSystemAccessSupported) {
+        console.log('File System Access API not supported');
         setIsRestoring(false);
         return;
       }
 
       try {
+        console.log('Attempting to restore file from IndexedDB...');
         const handle = await loadFileHandle();
+        
         if (!handle) {
+          console.log('No stored file handle found');
           setIsRestoring(false);
           return;
         }
 
+        console.log('Found stored handle:', handle.name);
+
         // Verify we still have permission
-        const permission = await handle.queryPermission({ mode: 'readwrite' });
+        let permission = await handle.queryPermission({ mode: 'readwrite' });
+        console.log('Initial permission status:', permission);
+        
+        // If permission is prompt, try to request it (works on page reload in Chrome)
+        if (permission === 'prompt') {
+          console.log('Permission prompt, requesting...');
+          permission = await handle.requestPermission({ mode: 'readwrite' });
+          console.log('Permission after request:', permission);
+        }
         
         if (permission === 'granted') {
           // Permission granted, restore the file
@@ -96,10 +110,10 @@ function App() {
           const file = await handle.getFile();
           setDocument(file);
           startFileWatcher(handle);
-          console.log('Restored previously opened file:', handle.name);
+          console.log('✅ Successfully restored file:', handle.name);
         } else {
           // Permission not granted, clear the stored handle
-          console.log('Permission not granted for stored file, clearing...');
+          console.log('❌ Permission not granted, clearing stored handle');
           const db = await openDB();
           const transaction = db.transaction(STORE_NAME, 'readwrite');
           transaction.objectStore(STORE_NAME).delete(HANDLE_KEY);
@@ -138,7 +152,9 @@ function App() {
       setFileName(handle.name);
 
       // Save handle to IndexedDB for persistence across refreshes
+      console.log('Saving file handle to IndexedDB:', handle.name);
       await saveFileHandle(handle);
+      console.log('✅ File handle saved to IndexedDB');
 
       // Read the file
       const file = await handle.getFile();
@@ -410,19 +426,9 @@ function App() {
           backgroundColor: '#d1ecf1', 
           color: '#0c5460',
           fontSize: '13px',
-          borderBottom: '1px solid #bee5eb',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px'
+          borderBottom: '1px solid #bee5eb'
         }}>
-          <span>
-            ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
-          </span>
-          <span style={{ fontSize: '12px', color: '#0c5460', opacity: 0.8 }}>
-            ⌨️ Shortcuts: {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Z (Undo) • {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+Y (Redo) • {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+S (Save) • {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O (Open)
-          </span>
+          ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
         </div>
       )}
 
