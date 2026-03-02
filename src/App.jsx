@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { SuperDocEditor } from '@superdoc-dev/react';
 import '@superdoc-dev/react/style.css';
+import './App.css'; // Custom styles for sticky toolbar
 
 // IndexedDB helpers for persisting file handles
 const DB_NAME = 'superdoc-editor';
@@ -538,21 +539,27 @@ function App() {
 
       {/* Editor or placeholder */}
       {document ? (
-        <SuperDocEditor
-          document={document}
-          documentMode="suggesting"
-          style={{ flex: 1 }}
-          onReady={(event) => {
-            // onReady receives an event object with { superdoc: SuperDocInstance }
-            superdocRef.current = event.superdoc;
-            console.log('SuperDoc ready', event.superdoc);
-          }}
-          onEditorUpdate={(event) => {
-            // Triggered when document content changes
-            // Trigger debounced auto-save (2 seconds after last change)
-            triggerAutoSave();
-          }}
-        />
+        <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+          <SuperDocEditor
+            document={document}
+            documentMode="suggesting"
+            style={{ 
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+            onReady={(event) => {
+              // onReady receives an event object with { superdoc: SuperDocInstance }
+              superdocRef.current = event.superdoc;
+              console.log('SuperDoc ready', event.superdoc);
+            }}
+            onEditorUpdate={(event) => {
+              // Triggered when document content changes
+              // Trigger debounced auto-save (2 seconds after last change)
+              triggerAutoSave();
+            }}
+          />
+        </div>
       ) : (
         <div style={{ 
           flex: 1, 

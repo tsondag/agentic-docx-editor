@@ -1,0 +1,40 @@
+/* Make SuperDoc formatting toolbar sticky */
+
+/* Universal sticky toolbar - targets the first child div of SuperDoc editor which is typically the toolbar */
+div[class*="superdoc"] > div:first-child {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* Alternative selectors for different SuperDoc versions */
+.superdoc-editor > div:first-child,
+[data-superdoc-editor] > div:first-child,
+.ProseMirror-menubar,
+div[role="toolbar"] {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+  background-color: #ffffff !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* Ensure the editor wrapper allows sticky positioning */
+.superdoc-editor,
+[data-superdoc-editor],
+div[class*="superdoc"] {
+  overflow: visible !important;
+}
+
+/* If toolbar has buttons/icons, ensure they stay visible */
+div[class*="toolbar"] button,
+div[class*="toolbar"] svg,
+.ProseMirror-menubar button,
+.ProseMirror-menubar svg {
+  pointer-events: auto !important;
+  z-index: inherit !important;
+}
+
+
