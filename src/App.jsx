@@ -65,7 +65,8 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [isRestoring, setIsRestoring] = useState(true); // Track if we're restoring from IndexedDB
-  const [permissionStatus, setPermissionStatus] = useState('unknown'); // Track permission status
+  const [hasStoredFile, setHasStoredFile] = useState(false); // Track if we have a stored file to restore
+  const [storedHandle, setStoredHandle] = useState(null); // Store the handle for one-click restoration
   const superdocRef = useRef(null);
   const fileCheckInterval = useRef(null);
   const autoSaveTimeout = useRef(null); // For debounced auto-save
@@ -74,9 +75,9 @@ function App() {
   // Check browser support
   const isFileSystemAccessSupported = 'showOpenFilePicker' in window;
 
-  // Restore previously opened file on mount
+  // Check if we have a stored file on mount (but don't auto-restore)
   useEffect(() => {
-    const restoreFile = async () => {
+    const checkStoredFile = async () => {
       if (!isFileSystemAccessSupported) {
         console.log('File System Access API not supported');
         setIsRestoring(false);
@@ -84,7 +85,7 @@ function App() {
       }
 
       try {
-        console.log('Attempting to restore file from IndexedDB...');
+        console.log('Checking for stored file in IndexedDB...');
         const handle = await loadFileHandle();
         
         if (!handle) {
@@ -94,70 +95,67 @@ function App() {
         }
 
         console.log('Found stored handle:', handle.name);
-
-        // Verify we still have permission
-        let permission = await handle.queryPermission({ mode: 'readwrite' });
-        console.log('Initial permission status:', permission);
-        setPermissionStatus(permission);
         
-        // If permission is prompt, try to request it (works on page reload in Chrome)
-        if (permission === 'prompt') {
-          console.log('Permission prompt, requesting...');
-          permission = await handle.requestPermission({ mode: 'readwrite' });
-          console.log('Permission after request:', permission);
-          setPermissionStatus(permission);
-        }
+        // Check if we still have permission (without requesting)
+        const permission = await handle.queryPermission({ mode: 'readwrite' });
+        console.log('Permission status:', permission);
         
+        // Store the handle for manual restoration
+        setStoredHandle(handle);
+        setHasStoredFile(true);
+        
+        // If permission is already granted (e.g., user selected "Allow on every visit"),
+        // auto-restore the file
         if (permission === 'granted') {
-          // Permission granted, restore the file
-          setFileHandle(handle);
-          setFileName(handle.name);
-          const file = await handle.getFile();
-          setDocument(file);
-          startFileWatcher(handle);
-          console.log('✅ Successfully restored file:', handle.name);
-          
-          // Check if we have persistent permissions
-          try {
-            const permState = await navigator.permissions.query({ name: 'file-system' });
-            console.log('File system permission state:', permState.state);
-          } catch (e) {
-            console.log('Could not query permission state:', e);
-          }
-        } else {
-          // Permission not granted, clear the stored handle
-          console.log('❌ Permission not granted, clearing stored handle');
-          const db = await openDB();
-          const transaction = db.transaction(STORE_NAME, 'readwrite');
-          transaction.objectStore(STORE_NAME).delete(HANDLE_KEY);
+          console.log('Permission already granted, auto-restoring...');
+          await restoreStoredFile(handle);
         }
+        
       } catch (err) {
-        console.error('Error restoring file:', err);
+        console.error('Error checking stored file:', err);
       } finally {
         setIsRestoring(false);
       }
     };
 
-    restoreFile();
+    checkStoredFile();
   }, []);
 
-  // Manually request persistent permissions
-  const requestPersistentPermission = async () => {
-    if (!fileHandle) return;
-    
+  // Restore a file from a stored handle (called after user click or if permission already granted)
+  const restoreStoredFile = async (handle) => {
     try {
-      const permission = await fileHandle.requestPermission({ mode: 'readwrite' });
-      setPermissionStatus(permission);
-      console.log('Permission granted:', permission);
+      setError(null);
+      
+      // Request permission (requires user gesture if not already granted)
+      const permission = await handle.requestPermission({ mode: 'readwrite' });
+      console.log('Permission after request:', permission);
       
       if (permission === 'granted') {
-        setError(null);
+        setFileHandle(handle);
+        setFileName(handle.name);
+        const file = await handle.getFile();
+        setDocument(file);
+        startFileWatcher(handle);
+        setHasStoredFile(false); // Hide the restore button
+        console.log('✅ Successfully restored file:', handle.name);
       } else {
-        setError('Permission denied. Please allow file access to enable persistence.');
+        setError('Permission denied. Please use "Open DOCX File" to select the file again.');
+        // Clear the stored handle since permission was denied
+        const db = await openDB();
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        transaction.objectStore(STORE_NAME).delete(HANDLE_KEY);
+        setHasStoredFile(false);
       }
     } catch (err) {
-      console.error('Error requesting permission:', err);
-      setError(`Permission error: ${err.message}`);
+      console.error('Error restoring file:', err);
+      setError(`Could not restore file: ${err.message}`);
+    }
+  };
+
+  // Handle click on "Open Last Document" button
+  const handleRestoreClick = () => {
+    if (storedHandle) {
+      restoreStoredFile(storedHandle);
     }
   };
 
@@ -184,11 +182,6 @@ function App() {
       setFileHandle(handle);
       setFileName(handle.name);
 
-      // Check initial permission status
-      const permission = await handle.queryPermission({ mode: 'readwrite' });
-      setPermissionStatus(permission);
-      console.log('File opened with permission:', permission);
-
       // Save handle to IndexedDB for persistence across refreshes
       console.log('Saving file handle to IndexedDB:', handle.name);
       await saveFileHandle(handle);
@@ -200,6 +193,9 @@ function App() {
 
       // Start watching for external changes (e.g., from MCP)
       startFileWatcher(handle);
+      
+      // Hide restore button if it was showing
+      setHasStoredFile(false);
 
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -385,8 +381,44 @@ function App() {
             <>
               {isRestoring ? (
                 <span style={{ fontSize: '14px', color: '#666' }}>
-                  🔄 Restoring previous file...
+                  🔄 Loading...
                 </span>
+              ) : hasStoredFile && storedHandle ? (
+                // Show "Open Last Document" button if we have a stored file
+                <>
+                  <button 
+                    onClick={handleRestoreClick}
+                    style={{
+                      padding: '10px 20px',
+                      backgroundColor: '#28a745',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                    }}
+                  >
+                    📂 Open Last Document ({storedHandle.name})
+                  </button>
+                  <span style={{ fontSize: '13px', color: '#666' }}>or</span>
+                  <button 
+                    onClick={handleOpenFile}
+                    title={`Open Different File (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O)`}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    Open Different File
+                  </button>
+                </>
               ) : (
                 <button 
                   onClick={handleOpenFile}
@@ -490,72 +522,9 @@ function App() {
           backgroundColor: '#d1ecf1', 
           color: '#0c5460',
           fontSize: '13px',
-          borderBottom: '1px solid #bee5eb',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '10px',
-          flexWrap: 'wrap'
+          borderBottom: '1px solid #bee5eb'
         }}>
-          <span>
-            ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
-          </span>
-          
-          {/* Permission status indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {permissionStatus === 'granted' ? (
-              <span style={{ 
-                fontSize: '12px', 
-                padding: '4px 8px', 
-                backgroundColor: '#d4edda', 
-                color: '#155724',
-                borderRadius: '4px',
-                border: '1px solid #c3e6cb'
-              }}>
-                ✅ Persistent access enabled
-              </span>
-            ) : permissionStatus === 'prompt' ? (
-              <>
-                <span style={{ 
-                  fontSize: '12px', 
-                  padding: '4px 8px', 
-                  backgroundColor: '#fff3cd', 
-                  color: '#856404',
-                  borderRadius: '4px',
-                  border: '1px solid #ffeaa7'
-                }}>
-                  ⚠️ Temporary access only
-                </span>
-                <button
-                  onClick={requestPersistentPermission}
-                  style={{
-                    padding: '4px 12px',
-                    fontSize: '12px',
-                    backgroundColor: '#007bff',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontWeight: '500'
-                  }}
-                  title="Click to request persistent file access. Select 'Allow on every visit' in the permission dialog."
-                >
-                  Enable Persistence
-                </button>
-              </>
-            ) : permissionStatus === 'denied' ? (
-              <span style={{ 
-                fontSize: '12px', 
-                padding: '4px 8px', 
-                backgroundColor: '#f8d7da', 
-                color: '#721c24',
-                borderRadius: '4px',
-                border: '1px solid #f5c6cb'
-              }}>
-                ❌ Access denied - Reopen file
-              </span>
-            ) : null}
-          </div>
+          ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
         </div>
       )}
 
@@ -597,14 +566,29 @@ function App() {
               </p>
             </div>
           ) : (
-            <div style={{ textAlign: 'center', maxWidth: '500px' }}>
+            <div style={{ textAlign: 'center', maxWidth: '600px' }}>
               <h2 style={{ marginBottom: '10px' }}>Welcome to SuperDoc Editor</h2>
-              <p style={{ fontSize: '16px', lineHeight: '1.5' }}>
-                Click "Open DOCX File" to select a document from your computer.
+              <p style={{ fontSize: '16px', lineHeight: '1.5', marginBottom: '15px' }}>
+                Open a DOCX file to start editing. Your changes will be saved directly to the original file on your disk.
               </p>
-              <p style={{ fontSize: '14px', marginTop: '10px', color: '#666' }}>
-                Your changes will be saved directly to the original file on your disk.
-              </p>
+              <div style={{ 
+                fontSize: '14px', 
+                color: '#666', 
+                textAlign: 'left', 
+                backgroundColor: '#f8f9fa',
+                padding: '15px',
+                borderRadius: '8px',
+                marginTop: '20px'
+              }}>
+                <p style={{ margin: '0 0 10px 0', fontWeight: '600' }}>💡 How it works:</p>
+                <ul style={{ margin: '0', paddingLeft: '20px' }}>
+                  <li style={{ marginBottom: '8px' }}>Click "Open DOCX File" to select a document</li>
+                  <li style={{ marginBottom: '8px' }}>Make your edits in the browser</li>
+                  <li style={{ marginBottom: '8px' }}>Changes auto-save to your local file</li>
+                  <li style={{ marginBottom: '8px' }}>When you return, click "Open Last Document" to resume editing</li>
+                  <li style={{ marginBottom: '0' }}>Select "Allow on every visit" in Chrome for instant restoration</li>
+                </ul>
+              </div>
             </div>
           )}
         </div>
