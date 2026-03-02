@@ -65,6 +65,7 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [isRestoring, setIsRestoring] = useState(true); // Track if we're restoring from IndexedDB
+  const [permissionStatus, setPermissionStatus] = useState('unknown'); // Track permission status
   const superdocRef = useRef(null);
   const fileCheckInterval = useRef(null);
   const autoSaveTimeout = useRef(null); // For debounced auto-save
@@ -97,12 +98,14 @@ function App() {
         // Verify we still have permission
         let permission = await handle.queryPermission({ mode: 'readwrite' });
         console.log('Initial permission status:', permission);
+        setPermissionStatus(permission);
         
         // If permission is prompt, try to request it (works on page reload in Chrome)
         if (permission === 'prompt') {
           console.log('Permission prompt, requesting...');
           permission = await handle.requestPermission({ mode: 'readwrite' });
           console.log('Permission after request:', permission);
+          setPermissionStatus(permission);
         }
         
         if (permission === 'granted') {
@@ -138,6 +141,26 @@ function App() {
     restoreFile();
   }, []);
 
+  // Manually request persistent permissions
+  const requestPersistentPermission = async () => {
+    if (!fileHandle) return;
+    
+    try {
+      const permission = await fileHandle.requestPermission({ mode: 'readwrite' });
+      setPermissionStatus(permission);
+      console.log('Permission granted:', permission);
+      
+      if (permission === 'granted') {
+        setError(null);
+      } else {
+        setError('Permission denied. Please allow file access to enable persistence.');
+      }
+    } catch (err) {
+      console.error('Error requesting permission:', err);
+      setError(`Permission error: ${err.message}`);
+    }
+  };
+
   // Open file from local disk using File System Access API
   const handleOpenFile = async () => {
     try {
@@ -160,6 +183,11 @@ function App() {
 
       setFileHandle(handle);
       setFileName(handle.name);
+
+      // Check initial permission status
+      const permission = await handle.queryPermission({ mode: 'readwrite' });
+      setPermissionStatus(permission);
+      console.log('File opened with permission:', permission);
 
       // Save handle to IndexedDB for persistence across refreshes
       console.log('Saving file handle to IndexedDB:', handle.name);
@@ -462,9 +490,72 @@ function App() {
           backgroundColor: '#d1ecf1', 
           color: '#0c5460',
           fontSize: '13px',
-          borderBottom: '1px solid #bee5eb'
+          borderBottom: '1px solid #bee5eb',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '10px',
+          flexWrap: 'wrap'
         }}>
-          ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
+          <span>
+            ℹ️ Changes are auto-saved to the original file. Edits from Cursor MCP will appear as tracked changes.
+          </span>
+          
+          {/* Permission status indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {permissionStatus === 'granted' ? (
+              <span style={{ 
+                fontSize: '12px', 
+                padding: '4px 8px', 
+                backgroundColor: '#d4edda', 
+                color: '#155724',
+                borderRadius: '4px',
+                border: '1px solid #c3e6cb'
+              }}>
+                ✅ Persistent access enabled
+              </span>
+            ) : permissionStatus === 'prompt' ? (
+              <>
+                <span style={{ 
+                  fontSize: '12px', 
+                  padding: '4px 8px', 
+                  backgroundColor: '#fff3cd', 
+                  color: '#856404',
+                  borderRadius: '4px',
+                  border: '1px solid #ffeaa7'
+                }}>
+                  ⚠️ Temporary access only
+                </span>
+                <button
+                  onClick={requestPersistentPermission}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: '12px',
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: '500'
+                  }}
+                  title="Click to request persistent file access. Select 'Allow on every visit' in the permission dialog."
+                >
+                  Enable Persistence
+                </button>
+              </>
+            ) : permissionStatus === 'denied' ? (
+              <span style={{ 
+                fontSize: '12px', 
+                padding: '4px 8px', 
+                backgroundColor: '#f8d7da', 
+                color: '#721c24',
+                borderRadius: '4px',
+                border: '1px solid #f5c6cb'
+              }}>
+                ❌ Access denied - Reopen file
+              </span>
+            ) : null}
+          </div>
         </div>
       )}
 
