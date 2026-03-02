@@ -2,6 +2,60 @@ import { useState, useRef, useEffect } from 'react';
 import { SuperDocEditor } from '@superdoc-dev/react';
 import '@superdoc-dev/react/style.css';
 
+// IndexedDB helpers for persisting file handles
+const DB_NAME = 'superdoc-editor';
+const DB_VERSION = 1;
+const STORE_NAME = 'fileHandles';
+const HANDLE_KEY = 'lastOpenedFile';
+
+const openDB = () => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
+    };
+  });
+};
+
+const saveFileHandle = async (handle) => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.put(handle, HANDLE_KEY);
+    return new Promise((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  } catch (err) {
+    console.error('Error saving file handle:', err);
+  }
+};
+
+const loadFileHandle = async () => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(HANDLE_KEY);
+    
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (err) {
+    console.error('Error loading file handle:', err);
+    return null;
+  }
+};
+
 function App() {
   const [document, setDocument] = useState(null);
   const [fileHandle, setFileHandle] = useState(null);
@@ -10,11 +64,55 @@ function App() {
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [isRestoring, setIsRestoring] = useState(true); // Track if we're restoring from IndexedDB
   const superdocRef = useRef(null);
   const fileCheckInterval = useRef(null);
 
   // Check browser support
   const isFileSystemAccessSupported = 'showOpenFilePicker' in window;
+
+  // Restore previously opened file on mount
+  useEffect(() => {
+    const restoreFile = async () => {
+      if (!isFileSystemAccessSupported) {
+        setIsRestoring(false);
+        return;
+      }
+
+      try {
+        const handle = await loadFileHandle();
+        if (!handle) {
+          setIsRestoring(false);
+          return;
+        }
+
+        // Verify we still have permission
+        const permission = await handle.queryPermission({ mode: 'readwrite' });
+        
+        if (permission === 'granted') {
+          // Permission granted, restore the file
+          setFileHandle(handle);
+          setFileName(handle.name);
+          const file = await handle.getFile();
+          setDocument(file);
+          startFileWatcher(handle);
+          console.log('Restored previously opened file:', handle.name);
+        } else {
+          // Permission not granted, clear the stored handle
+          console.log('Permission not granted for stored file, clearing...');
+          const db = await openDB();
+          const transaction = db.transaction(STORE_NAME, 'readwrite');
+          transaction.objectStore(STORE_NAME).delete(HANDLE_KEY);
+        }
+      } catch (err) {
+        console.error('Error restoring file:', err);
+      } finally {
+        setIsRestoring(false);
+      }
+    };
+
+    restoreFile();
+  }, []);
 
   // Open file from local disk using File System Access API
   const handleOpenFile = async () => {
@@ -38,6 +136,9 @@ function App() {
 
       setFileHandle(handle);
       setFileName(handle.name);
+
+      // Save handle to IndexedDB for persistence across refreshes
+      await saveFileHandle(handle);
 
       // Read the file
       const file = await handle.getFile();
@@ -201,22 +302,30 @@ function App() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {!document ? (
-            <button 
-              onClick={handleOpenFile}
-              title={`Open DOCX File (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O)`}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#0066cc',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '500'
-              }}
-            >
-              📂 Open DOCX File
-            </button>
+            <>
+              {isRestoring ? (
+                <span style={{ fontSize: '14px', color: '#666' }}>
+                  🔄 Restoring previous file...
+                </span>
+              ) : (
+                <button 
+                  onClick={handleOpenFile}
+                  title={`Open DOCX File (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+O)`}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#0066cc',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }}
+                >
+                  📂 Open DOCX File
+                </button>
+              )}
+            </>
           ) : (
             <>
               <button 
@@ -231,7 +340,8 @@ function App() {
                   borderRadius: '4px',
                   cursor: isSaving ? 'not-allowed' : 'pointer',
                   fontSize: '14px',
-                  fontWeight: '500'
+                  fontWeight: '500',
+                  minWidth: '80px' // Prevent button size change
                 }}
               >
                 {isSaving ? '💾 Saving...' : '💾 Save'}
@@ -246,11 +356,14 @@ function App() {
                 Auto-save
               </label>
 
-              {lastSaved && (
-                <span style={{ fontSize: '12px', color: '#666' }}>
-                  Last saved: {lastSaved.toLocaleTimeString()}
-                </span>
-              )}
+              {/* Always show last saved time (with fixed width to prevent layout shift) */}
+              <span style={{ fontSize: '12px', color: '#666', minWidth: '140px' }}>
+                {lastSaved ? (
+                  <>Last saved: {lastSaved.toLocaleTimeString()}</>
+                ) : (
+                  <>Not saved yet</>
+                )}
+              </span>
 
               <button 
                 onClick={handleOpenFile}
