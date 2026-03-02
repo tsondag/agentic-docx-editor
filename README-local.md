@@ -35,7 +35,7 @@ A browser-based DOCX editor powered by SuperDoc with **direct local file editing
 
 1. Click "Open DOCX File"
 2. Browser shows native file picker
-3. Select your DOCX file (e.g., the Cureator contract)
+3. Select your DOCX file (e.g., the sample contract)
 4. File opens in editor
 5. Make changes → auto-saved to disk
 6. Original file is updated directly
@@ -47,7 +47,7 @@ A browser-based DOCX editor powered by SuperDoc with **direct local file editing
    ```
    Use SuperDoc MCP to open "/Users/thijssondag/Documents/Grants/.../contract.docx"
    
-   Please suggest changing "Party A" to "WeGuide Health" in section 2
+   Please suggest changing "Vendor A" to "Acme Corp" in section 2
    ```
 3. Cursor makes the change via MCP (as tracked change)
 4. Browser automatically detects file change and reloads

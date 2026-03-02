@@ -28,7 +28,7 @@ A browser-based DOCX editor that integrates with Cursor AI, enabling visual edit
 
 4. **Ask Cursor AI** to make changes:
    ```
-   Use SuperDoc MCP to suggest changing "Party A" to "WeGuide Health" in section 2
+   Use SuperDoc MCP to suggest changing "Vendor A" to "Acme Corp" in section 2
    ```
 
 5. **Browser auto-reloads** and shows the tracked change
@@ -100,10 +100,10 @@ npm run dev
 **In Cursor chat, use these prompts:**
 
 ```
-Use SuperDoc MCP to suggest replacing "UPDATE" with "WeGuide Biomarker" 
+Use SuperDoc MCP to suggest replacing "PLACEHOLDER" with "Project Phoenix" 
 in the project name field
 
-Use SuperDoc MCP to suggest adding "Prof Kim Delbaere" as Principal 
+Use SuperDoc MCP to suggest adding "Dr. Sarah Johnson" as Principal 
 Investigator in section 4
 
 Use SuperDoc MCP to suggest deleting the third paragraph in section 2.1
@@ -303,7 +303,7 @@ cd superdoc-cursor && npm run dev
 ```
 Use SuperDoc MCP to open "contracts/collaboration-agreement.docx"
 
-Please suggest changing "Party A" to "WeGuide Health" throughout the document
+Please suggest changing "Vendor A" to "Acme Corp" throughout the document
 ```
 
 **Browser:** Shows tracked changes → Review → Click "Accept All" → Done!
