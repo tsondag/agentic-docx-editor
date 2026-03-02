@@ -64,6 +64,7 @@ function App() {
   const [lastSaved, setLastSaved] = useState(null);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveQueueSize, setSaveQueueSize] = useState(0); // Track queue size for UI feedback
   const [error, setError] = useState(null);
   const [isRestoring, setIsRestoring] = useState(true); // Track if we're restoring from IndexedDB
   const [hasStoredFile, setHasStoredFile] = useState(false); // Track if we have a stored file to restore
@@ -72,6 +73,9 @@ function App() {
   const fileCheckInterval = useRef(null);
   const autoSaveTimeout = useRef(null); // For debounced auto-save
   const lastSaveTime = useRef(null); // Track when we last saved to avoid reload loop
+  const saveQueue = useRef([]); // Queue for pending save operations
+  const isSavingRef = useRef(false); // Lock to prevent concurrent saves
+  const pendingSaveAbortController = useRef(null); // To cancel pending saves
 
   // Check browser support
   const isFileSystemAccessSupported = 'showOpenFilePicker' in window;
@@ -206,21 +210,35 @@ function App() {
     }
   };
 
-  // Save changes back to disk
-  const saveFile = async () => {
-    if (!fileHandle || !superdocRef.current) return;
+  // Process save queue - ensures only one save operation runs at a time
+  const processSaveQueue = async () => {
+    // If already saving or queue is empty, return
+    if (isSavingRef.current || saveQueue.current.length === 0) {
+      return;
+    }
+
+    // Lock to prevent concurrent saves
+    isSavingRef.current = true;
+    setIsSaving(true);
+
+    // Get the next save operation from queue (FIFO)
+    const { resolve, reject } = saveQueue.current.shift();
 
     try {
-      setIsSaving(true);
       setError(null);
 
+      if (!fileHandle || !superdocRef.current) {
+        throw new Error('No file handle or editor reference available');
+      }
+
       // Export the document as a blob (without triggering download)
-      // Using SuperDoc's export() method - see https://docs.superdoc.dev/core/superdoc/methods
       const blob = await superdocRef.current.export({ triggerDownload: false });
       
       if (!blob) {
         throw new Error('Failed to export document from editor');
       }
+
+      console.log(`Saving file (${saveQueue.current.length} more in queue)...`);
 
       // Write to the original file
       const writable = await fileHandle.createWritable();
@@ -231,14 +249,55 @@ function App() {
       lastSaveTime.current = Date.now();
 
       setLastSaved(new Date());
-      console.log('File saved successfully:', fileName);
+      console.log('✅ File saved successfully:', fileName);
+
+      resolve(); // Resolve the promise for this save operation
 
     } catch (err) {
-      setError(`Error saving file: ${err.message}`);
-      console.error('Error saving file:', err);
+      const errorMessage = `Error saving file: ${err.message}`;
+      setError(errorMessage);
+      console.error('❌ Error saving file:', err);
+      reject(err); // Reject the promise for this save operation
     } finally {
-      setIsSaving(false);
+      // Unlock and update UI
+      isSavingRef.current = false;
+      
+      // Update queue size for UI
+      setSaveQueueSize(saveQueue.current.length);
+      
+      // Only set isSaving to false if queue is empty
+      if (saveQueue.current.length === 0) {
+        setIsSaving(false);
+      }
+
+      // Process next item in queue (if any)
+      if (saveQueue.current.length > 0) {
+        // Use setTimeout to avoid deep recursion on rapid saves
+        setTimeout(() => processSaveQueue(), 0);
+      }
     }
+  };
+
+  // Queue a save operation (called by user or auto-save)
+  const saveFile = async () => {
+    if (!fileHandle || !superdocRef.current) {
+      console.warn('Cannot save: no file handle or editor reference');
+      return Promise.resolve();
+    }
+
+    // Create a promise that will be resolved when this save completes
+    const savePromise = new Promise((resolve, reject) => {
+      saveQueue.current.push({ resolve, reject });
+      
+      // Update UI with queue size
+      setSaveQueueSize(saveQueue.current.length);
+    });
+
+    // Start processing queue
+    processSaveQueue();
+
+    // Return promise so caller can await if needed
+    return savePromise;
   };
 
   // Watch for external file changes (from MCP or other editors)
@@ -324,27 +383,35 @@ function App() {
   }, [fileHandle, superdocRef.current]);
 
   // Auto-save functionality - debounced (save 2 seconds after last change)
+  // Now with intelligent queue management
   const triggerAutoSave = () => {
     if (!autoSaveEnabled || !fileHandle || !superdocRef.current) return;
 
-    // Clear existing timeout
+    // Clear existing timeout (cancel pending auto-save)
     if (autoSaveTimeout.current) {
       clearTimeout(autoSaveTimeout.current);
+      console.log('⏸️ Cancelled pending auto-save (user still typing)');
     }
 
     // Set new timeout to save 2 seconds after last change
     autoSaveTimeout.current = setTimeout(() => {
-      console.log('Auto-saving after content change...');
-      saveFile();
+      console.log('⏰ Auto-save triggered after 2s of inactivity');
+      
+      // Queue the save (will be processed in order)
+      saveFile().catch(err => {
+        console.error('Auto-save failed:', err);
+      });
     }, 2000); // 2 seconds debounce
   };
 
-  // Cleanup auto-save timeout on unmount
+  // Cleanup auto-save timeout and clear queue on unmount
   useEffect(() => {
     return () => {
       if (autoSaveTimeout.current) {
         clearTimeout(autoSaveTimeout.current);
       }
+      // Clear any pending saves in queue
+      saveQueue.current = [];
     };
   }, []);
 
@@ -465,7 +532,9 @@ function App() {
                   minWidth: '80px' // Prevent button size change
                 }}
               >
-                {isSaving ? '💾 Saving...' : '💾 Save'}
+                {isSaving ? (
+                  saveQueueSize > 0 ? `💾 Saving... (${saveQueueSize} queued)` : '💾 Saving...'
+                ) : '💾 Save'}
               </button>
 
               <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px', cursor: 'pointer' }}>
